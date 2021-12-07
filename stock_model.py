@@ -1,40 +1,99 @@
-import pickle
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+
+
+@author: Dev Nambudiripad
+"""
+
+import pickle as pkl
 import yfinance as yf
-import itertools
 import numpy as np
 import pandas as pd
-from prophet import Prophet
+import pandas_datareader as web
+import datetime as dt
+import matplotlib.pyplot as plt
 
-today = date.today()
-delta = relativedelta(years=5)
-start = today - delta
-end = today
 
-data = yf.download("AMZN", start, end)
-df = data[["Date", "Close"]]
-df = df.rename(columns={"Data": "ds", "Close": "y"})
+from sklearn.preprocessing import MinMaxScaler
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Dropout, LSTM
 
-param_grid = {
-    'changepoint_prior_scale': [0.001, 0.01, 0.1, 0.5],
-    'seasonality_prior_scale': [0.01, 0.1, 1.0, 10.0],
-    'seasonality_mode': ['additive', 'multiplicative']
-}
+# Loading the Data
+company = 'FB'
 
-# Generate all combinations of parameters
-all_params = [dict(zip(param_grid.keys(), v)) for v in itertools.product(*param_grid.values())]
-rmses = []  # Store the RMSEs for each params here
+start = dt.datetime(2012, 1, 1)
+end = dt.datetime(2021, 6, 1)
 
-# Use cross validation to evaluate all parameters
-for params in all_params:
-    m = Prophet(**params).fit(df)  # Fit model with given params
-    df_cv = cross_validation(m, horizon='30 days', parallel="processes")
-    df_p = performance_metrics(df_cv, rolling_window=1)
-    rmses.append(df_p['rmse'].values[0])
+# data = yf.download("AMZN", start, end)
+# data.reset_index(inplace=True)
+data = web.DataReader(company, 'yahoo', start, end)
 
-# Find the best parameters
-tuning_results = pd.DataFrame(all_params)
-tuning_results['rmse'] = rmses
-print(tuning_results)
+scaler = MinMaxScaler(feature_range=(0, 1))
+scaled_data = scaler.fit_transform(data['Close'].values.reshape(-1, 1))
 
-best_params = all_params[np.argmin(rmses)]
-print(best_params)
+prediction_days = 60
+
+x_train = []
+y_train = []
+
+for x in range(prediction_days, len(scaled_data)):
+    x_train.append(scaled_data[x - prediction_days:x, 0])
+    y_train.append(scaled_data[x, 0])
+
+x_train, y_train = np.array(x_train), np.array(y_train)
+x_train = np.reshape(x_train, (x_train.shape[0], x_train.shape[1], 1))
+
+# Build Model
+model = Sequential()
+
+model.add(LSTM(units=50, return_sequences=True, input_shape=(x_train.shape[1], 1)))
+model.add(Dropout(0.2))
+model.add(LSTM(units=50, return_sequences=True))
+model.add(Dropout(0.2))
+model.add(LSTM(units=50))
+model.add(Dropout(0.2))
+model.add(Dense(units=1))  # Prediction of one day out
+
+model.compile(optimizer='adam', loss='mean_squared_error')
+model.fit(x_train, y_train, epochs=25, batch_size=32)
+
+'''Test Model Accuracy on Existing Data'''
+test_start = dt.datetime(2021, 6, 16)
+test_end = dt.datetime.now()
+
+test_data = web.DataReader(company, 'yahoo', start, end)
+actual_prices = test_data['Close'].values
+
+total_dataset = pd.concat((data['Close'], test_data['Close']), axis=0)
+
+model_inputs = total_dataset[len(total_dataset) - len(test_data) - prediction_days:].values
+model_inputs = model_inputs.reshape(-1, 1)
+model_inputs = scaler.transform(model_inputs)
+
+# Make Predictions on Test Data
+x_test = []
+
+for x in range(prediction_days, len(model_inputs)):
+    x_test.append(model_inputs[x - prediction_days:x, 0])
+
+x_test = np.array(x_test)
+x_test = np.reshape(x_test, (x_test.shape[0], x_test.shape[1], 1))
+
+predicted_prices = model.predict(x_test)
+predicted_prices = scaler.inverse_transform(predicted_prices)
+
+plt.plot(actual_prices, color="black")
+plt.plot(predicted_prices, color='green')
+plt.title("AMZN Share Price")
+plt.xlabel("Time")
+plt.ylabel("AMZN Share Price")
+
+# Predict Next Day
+real_data = [model_inputs[len(model_inputs) - prediction_days:len(model_inputs), 0]]
+real_data = np.array(real_data)
+real_data = np.reshape(real_data, (real_data.shape[0], real_data.shape[1], 1))
+
+prediction = model.predict(real_data)
+prediction = scaler.inverse_transform(prediction)
+print(f"Prediction: {prediction}")
