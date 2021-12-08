@@ -1,0 +1,15 @@
+pandas
+json
+datetime
+dateutil.relativedelta
+plotly
+yfinance
+numpy
+pandas_datareader
+requests
+streamlit_lottie
+matplotlib
+silence_tensorflow.auto
+scikit-learn
+tensorflow
+
