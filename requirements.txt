@@ -6,7 +6,7 @@ pandas_datareader
 requests
 streamlit_lottie
 matplotlib
-silence_tensorflow.auto
+silence_tensorflow
 scikit-learn
 tensorflow
 
