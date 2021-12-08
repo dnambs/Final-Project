@@ -1,6 +1,4 @@
 pandas
-datetime
-dateutil.relativedelta
 plotly
 yfinance
 numpy
