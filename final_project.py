@@ -9,7 +9,6 @@
 import streamlit as st
 import pandas as pd
 import json
-import plotly
 from datetime import date
 from dateutil.relativedelta import relativedelta
 from plotly import graph_objects as go
