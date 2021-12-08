@@ -13,7 +13,7 @@ import pandas as pd
 import pandas_datareader as web
 import datetime as dt
 import matplotlib.pyplot as plt
-
+import silence_tensorflow.auto
 
 from sklearn.preprocessing import MinMaxScaler
 from tensorflow.keras.models import Sequential
@@ -57,12 +57,13 @@ model.add(Dense(units=1))  # Prediction of one day out
 
 model.compile(optimizer='adam', loss='mean_squared_error')
 model.fit(x_train, y_train, epochs=25, batch_size=32)
+model.save("my_model")
 
 '''Test Model Accuracy on Existing Data'''
 test_start = dt.datetime(2021, 6, 16)
 test_end = dt.datetime.now()
 
-test_data = web.DataReader(company, 'yahoo', start, end)
+test_data = web.DataReader(company, 'yahoo', test_start, test_end)
 actual_prices = test_data['Close'].values
 
 total_dataset = pd.concat((data['Close'], test_data['Close']), axis=0)
