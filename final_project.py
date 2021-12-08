@@ -8,6 +8,7 @@
 ### IMPORTING THINGS ###
 import streamlit as st
 import pandas as pd
+import json
 from datetime import date
 from dateutil.relativedelta import relativedelta
 from plotly import graph_objs as go
@@ -15,6 +16,8 @@ import yfinance as yf
 import numpy as np
 import pandas_datareader as web
 import datetime as dt
+import requests
+from streamlit_lottie import st_lottie
 import matplotlib.pyplot as plt
 import silence_tensorflow.auto
 
@@ -26,7 +29,8 @@ from datetime import timedelta
 
 model = keras.models.load_model("my_model")
 
-option = st.sidebar.selectbox("Choose a Dashboard", ('Welcome Page', 'Stock Up/Down', 'Portfolio Optimization'))
+option = st.sidebar.selectbox("Choose a Dashboard", ('Welcome Page', 'Stock Up/Down', 'Portfolio Optimization',
+                                                     'Returns Comparison'))
 
 
 @st.cache
@@ -34,6 +38,13 @@ def load_data():
     tickers = pd.read_html('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies')[0]
     tickers = tickers.drop(['GICS Sub-Industry', 'CIK', 'SEC filings'], axis=1)
     return tickers
+
+
+def load_lottieurl(url: str):
+    r = requests.get(url)
+    if r.status_code != 200:
+        return none
+    return r.json()
 
 
 def predict_up_down(stock_input):
@@ -130,18 +141,24 @@ def optimization(stock_1_input, stock_2_input, stock_3_input, stock_4_input, sto
     return weights
 
 
+def relativereturns(df):
+    rel = df.pct_change()
+    cumret = (1 + rel).cumprod() - 1
+    cumret = cumret.fillna(0)
+    return cumret
+
+
 def main():
     if option == 'Welcome Page':
-        st.title("Investor's Toolbox-Lite")
-        st.write(
-            "This application would allow an individual to enter up to five stock tickers from the S&P 500 and a total "
-            "amount to invest "
-            " as well as a time period. Then this application would use a predictive model to" " "
-            "first predict the closing price of each of the tickers and then provide an optimal share" " "
-            "allocation to maximize returns")
+        st.title("Investor's Toolbox-Light")
+        st.write("The intent of this dashboard is to provide some tools for investors to use for portfolio research. "
+                 "The different pages can be navigated to using the selector box on the left side")
+
+        lottie_stock = load_lottieurl("https://assets9.lottiefiles.com/packages/lf20_OOvaPt.json")
+        st_lottie(lottie_stock, speed=0.75)
 
     if option == 'Stock Up/Down':
-        st.header(option)
+        st.header("Predicting Whether the Ticker's Closing Price will be Higher or Lower")
         st.subheader("S&P 500 Companies")
         tickers = load_data()
         st.write('<style>div.row-widget.stRadio > div{flex-direction:row;justify-content: center;} </style>',
@@ -199,73 +216,83 @@ def main():
         st.write('You can find more information on the fundamentals of this theory here:')
         st.write('(https://www.thebalance.com/what-is-mpt-2466539')
 
-
         tickers = load_data()
         # Stock Ticker Selection
         st.subheader("Stock Ticker Multi-Selection")
+
         stock_inputs = st.multiselect("Please enter 5 stock tickers from the S&P 500:", tickers["Symbol"])
-        stock_1_input = stock_inputs[0]
-        stock_2_input = stock_inputs[1]
-        stock_3_input = stock_inputs[2]
-        stock_4_input = stock_inputs[3]
-        stock_5_input = stock_inputs[4]
+        if len(stock_inputs) == 5:
+            stock_1_input = stock_inputs[0]
+            stock_2_input = stock_inputs[1]
+            stock_3_input = stock_inputs[2]
+            stock_4_input = stock_inputs[3]
+            stock_5_input = stock_inputs[4]
 
-        number = st.number_input('How much money would you like to invest?')
+            number = st.number_input('How much money would you like to invest?')
 
-        if st.button('Optimize'):
-            st.write('Optimizing away...')
-            start = dt.datetime(2021, 1, 1)
-            end = dt.datetime.now()
 
-            stock_1 = web.DataReader(stock_1_input, 'yahoo', start, end)
-            stock_2 = web.DataReader(stock_2_input, 'yahoo', start, end)
-            stock_3 = web.DataReader(stock_3_input, 'yahoo', start, end)
-            stock_4 = web.DataReader(stock_4_input, 'yahoo', start, end)
-            stock_5 = web.DataReader(stock_5_input, 'yahoo', start, end)
+            if st.button('Optimize'):
+                st.write('Optimizing away...')
+                start = dt.datetime(2021, 1, 1)
+                end = dt.datetime.now()
 
-            stocks = pd.concat(
-                [stock_1['Close'], stock_2['Close'], stock_3['Close'], stock_4['Close'], stock_5['Close']],
-                axis=1)
-            stocks.columns = [stock_1_input, stock_2_input, stock_3_input,stock_4_input, stock_5_input]
+                stock_1 = web.DataReader(stock_1_input, 'yahoo', start, end)
+                stock_2 = web.DataReader(stock_2_input, 'yahoo', start, end)
+                stock_3 = web.DataReader(stock_3_input, 'yahoo', start, end)
+                stock_4 = web.DataReader(stock_4_input, 'yahoo', start, end)
+                stock_5 = web.DataReader(stock_5_input, 'yahoo', start, end)
 
-            returns = stocks / stocks.shift(1)
+                stocks = pd.concat(
+                    [stock_1['Close'], stock_2['Close'], stock_3['Close'], stock_4['Close'], stock_5['Close']],
+                    axis=1)
+                stocks.columns = [stock_1_input, stock_2_input, stock_3_input, stock_4_input, stock_5_input]
 
-            logReturns = np.log(returns)
+                returns = stocks / stocks.shift(1)
 
-            noOfPortfolios = 10000
-            weight = np.zeros((noOfPortfolios, 5))
-            expectedReturn = np.zeros(noOfPortfolios)
-            expectedVolatility = np.zeros(noOfPortfolios)
-            sharpeRatio = np.zeros(noOfPortfolios)
+                logReturns = np.log(returns)
 
-            meanLogRet = logReturns.mean()
-            Sigma = logReturns.cov()
-            for k in range(noOfPortfolios):
-                w = np.array(np.random.random(5))
-                w = w / np.sum(w)
-                weight[k, :] = w
-                expectedReturn[k] = np.sum(meanLogRet * w)
-                expectedVolatility[k] = np.dot(w.T, np.dot(Sigma, w))
-                sharpeRatio[k] = expectedReturn[k] / expectedVolatility[k]
+                noOfPortfolios = 10000
+                weight = np.zeros((noOfPortfolios, 5))
+                expectedReturn = np.zeros(noOfPortfolios)
+                expectedVolatility = np.zeros(noOfPortfolios)
+                sharpeRatio = np.zeros(noOfPortfolios)
 
-            maxIndex = sharpeRatio.argmax()
-            weights = weight[maxIndex, :]
-            st.write('I am now much improved...')
+                meanLogRet = logReturns.mean()
+                Sigma = logReturns.cov()
+                for k in range(noOfPortfolios):
+                    w = np.array(np.random.random(5))
+                    w = w / np.sum(w)
+                    weight[k, :] = w
+                    expectedReturn[k] = np.sum(meanLogRet * w)
+                    expectedVolatility[k] = np.dot(w.T, np.dot(Sigma, w))
+                    sharpeRatio[k] = expectedReturn[k] / expectedVolatility[k]
 
-            st.write(weights)
-            money_stock_1 = weights[0] * number
-            money_stock_2 = weights[1] * number
-            money_stock_3 = weights[2] * number
-            money_stock_4 = weights[3] * number
-            money_stock_5 = weights[4] * number
+                maxIndex = sharpeRatio.argmax()
+                weights = weight[maxIndex, :]
+                st.write('I am now much improved...')
 
-            st.markdown('The optimal allocation:')
-            st.write(f"{stock_1_input}: $ {money_stock_1}")
-            st.write(f"{stock_2_input}: $ {money_stock_2}")
-            st.write(f"{stock_3_input}: $ {money_stock_3}")
-            st.write(f"{stock_4_input}: $ {money_stock_4}")
-            st.write(f"{stock_5_input}: $ {money_stock_5}")
+                st.write(weights)
+                money_stock_1 = weights[0] * number
+                money_stock_2 = weights[1] * number
+                money_stock_3 = weights[2] * number
+                money_stock_4 = weights[3] * number
+                money_stock_5 = weights[4] * number
 
+                st.markdown('The optimal allocation:')
+                st.write(f"{stock_1_input}: $ {money_stock_1}")
+                st.write(f"{stock_2_input}: $ {money_stock_2}")
+                st.write(f"{stock_3_input}: $ {money_stock_3}")
+                st.write(f"{stock_4_input}: $ {money_stock_4}")
+                st.write(f"{stock_5_input}: $ {money_stock_5}")
+    if option == 'Returns Comparison':
+        st.header(option)
+        tickers = load_data()
+        dropdown = st.multiselect('Choose at least 2 tickers that you would like to compare:', tickers["Symbol"])
+        start = st.date_input('Start', value=pd.to_datetime('2021-01-01'))
+        end = st.date_input('End', value=pd.to_datetime('today'))
+        if len(dropdown) > 0:
+            df = relativereturns(yf.download(dropdown, start, end)['Close'])
+            st.line_chart(df)
 
 
 # st.subheader(f"{ticker_1.info['shortName']} ({stock_1_input})")
